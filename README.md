@@ -32,20 +32,64 @@ This file contains a straightforward application of PEFT to the LLaMA model,
 as well as some code related to prompt construction and tokenization.
 PRs adapting this code to support larger models are always welcome.
 
-Example usage:
+#### Setup WandB (Optional)
+
+First, install and login to WandB for experiment tracking:
 
 ```bash
-python finetune.py \
-    --base_model 'decapoda-research/llama-7b-hf' \
-    --data_path 'yahma/alpaca-cleaned' \
-    --output_dir './lora-alpaca'
+pip install wandb
+wandb login
 ```
 
-We can also tweak our hyperparameters:
+This will prompt you to enter your WandB API key. You can find your API key at https://wandb.ai/authorize
+
+Alternatively, you can set the API key directly:
+
+```bash
+wandb login YOUR_WANDB_API_KEY
+```
+
+We recommend using project name `alpaca-lora` for consistency.
+
+#### Training with Qwen3-8B (Local Model)
+
+Example usage with local Qwen3-8B model:
 
 ```bash
 python finetune.py \
-    --base_model 'decapoda-research/llama-7b-hf' \
+    --base_model '/mnt/input/models/Qwen3-8B' \
+    --data_path 'yahma/alpaca-cleaned' \
+    --output_dir './lora-qwen3-8b'
+```
+
+#### Hyperparameter tuning with WandB tracking:
+
+```bash
+python finetune.py \
+    --base_model '/mnt/input/models/Qwen3-8B' \
+    --data_path 'yahma/alpaca-cleaned' \
+    --output_dir './lora-qwen3-8b' \
+    --batch_size 128 \
+    --micro_batch_size 4 \
+    --num_epochs 3 \
+    --learning_rate 1e-4 \
+    --cutoff_len 512 \
+    --val_set_size 2000 \
+    --lora_r 8 \
+    --lora_alpha 16 \
+    --lora_dropout 0.05 \
+    --lora_target_modules '[q_proj,v_proj]' \
+    --train_on_inputs \
+    --group_by_length \
+    --wandb_project 'alpaca-lora' \
+    --wandb_run_name 'qwen3-8b-bs128-mb4-ep3-lr1e4-len512'
+```
+
+#### Training with Meta LLaMA models:
+
+```bash
+python finetune.py \
+    --base_model 'meta-llama/Llama-2-7b-hf' \
     --data_path 'yahma/alpaca-cleaned' \
     --output_dir './lora-alpaca' \
     --batch_size 128 \
@@ -59,8 +103,12 @@ python finetune.py \
     --lora_dropout 0.05 \
     --lora_target_modules '[q_proj,v_proj]' \
     --train_on_inputs \
-    --group_by_length
+    --group_by_length \
+    --wandb_project 'alpaca-lora' \
+    --wandb_run_name 'llama2-7b-bs128-mb4-ep3-lr1e4-len512'
 ```
+
+The run name convention: `{model}-bs{batch_size}-mb{micro_batch_size}-ep{num_epochs}-lr{learning_rate}-len{cutoff_len}` helps identify experiments easily.
 
 ### Inference (`generate.py`)
 
@@ -71,7 +119,7 @@ Example usage:
 ```bash
 python generate.py \
     --load_8bit \
-    --base_model 'decapoda-research/llama-7b-hf' \
+    --base_model 'meta-llama/Llama-2-7b-hf' \
     --lora_weights 'tloen/alpaca-lora-7b'
 ```
 
@@ -81,7 +129,7 @@ The most recent "official" Alpaca-LoRA adapter available at [`tloen/alpaca-lora-
 
 ```bash
 python finetune.py \
-    --base_model='decapoda-research/llama-7b-hf' \
+    --base_model='meta-llama/Llama-2-7b-hf' \
     --num_epochs=10 \
     --cutoff_len=512 \
     --group_by_length \
@@ -112,7 +160,7 @@ docker build -t alpaca-lora .
 ```bash
 docker run --gpus=all --shm-size 64g -p 7860:7860 -v ${HOME}/.cache:/root/.cache --rm alpaca-lora generate.py \
     --load_8bit \
-    --base_model 'decapoda-research/llama-7b-hf' \
+    --base_model 'meta-llama/Llama-2-7b-hf' \
     --lora_weights 'tloen/alpaca-lora-7b'
 ```
 
