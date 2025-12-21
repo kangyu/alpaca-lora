@@ -1,0 +1,37 @@
+# Large data files - these are already in Azure Storage
+alpaca_data_gpt4.json
+alpaca_data.json
+alpaca_data_cleaned_archive.json
+
+# Jupyter notebooks
+*.ipynb
+
+# Git
+.git/
+.github/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Documentation
+*.md
+LICENSE
+DATA_LICENSE
+
+# IDE
+.vscode/
+.idea/
+
+# Model checkpoints (if any)
+*.bin
+*.safetensors
+*.pt
+*.pth

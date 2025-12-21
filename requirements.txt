@@ -14,3 +14,13 @@ wandb>=0.15.0
 torch>=2.0.0
 einops
 tiktoken
+safetensors>=0.3.0
+azureml-mlflow
+# xFormers for memory efficient attention (可选，unsloth 优先使用 flash-attn)
+# xformers
+# Optimized kernels
+triton
+
+# ========== Unsloth + Flash Attention ==========
+# TRL for SFTTrainer (unsloth 需要)
+trl>=0.7.0
