@@ -29,6 +29,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.prompter import Prompter
 from azureml_callback import AzureMLCallback
+from lm_eval_callback import LMEvalCallback
 
 
 def find_latest_checkpoint(output_dir: str) -> str:
@@ -120,6 +121,11 @@ def train(
     resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
     prompt_template_name: str = "alpaca",  # The prompt template to use, will default to alpaca.
     auto_resume: bool = True,  # automatically resume from the latest checkpoint if available
+    # LM-Eval monitoring
+    lm_eval_enabled: bool = True,  # enable lm-eval during training
+    lm_eval_steps: int = 100,  # run lm-eval every N steps (must be multiple of save_steps)
+    lm_eval_tasks: List[str] = ["mmlu_stem", "gsm8k"],  # tasks to evaluate
+    lm_eval_limit: int = 100,  # samples per task (for speed)
 ):
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
         print(
@@ -147,10 +153,17 @@ def train(
             f"resume_from_checkpoint: {resume_from_checkpoint or False}\n"
             f"auto_resume: {auto_resume}\n"
             f"prompt template: {prompt_template_name}\n"
+            f"lm_eval_enabled: {lm_eval_enabled}\n"
+            f"lm_eval_steps: {lm_eval_steps}\n"
+            f"lm_eval_tasks: {lm_eval_tasks}\n"
+            f"lm_eval_limit: {lm_eval_limit}\n"
         )
     assert (
         base_model
     ), "Please specify a --base_model, e.g. --base_model='huggyllama/llama-7b'"
+    
+    # 保存基础模型路径到环境变量，供 LM-Eval callback 使用
+    os.environ['BASE_MODEL_PATH'] = base_model
     
     # Auto-detect latest checkpoint if auto_resume is enabled
     if auto_resume and not resume_from_checkpoint:
@@ -410,6 +423,25 @@ def train(
     # Determine mixed precision settings
     use_bf16 = torch.cuda.is_bf16_supported()
     
+    # 构建 callbacks 列表
+    callbacks = [AzureMLCallback()]
+    
+    # 添加 LM-Eval callback（用于监控模型能力变化）
+    if lm_eval_enabled:
+        lm_eval_callback = LMEvalCallback(
+            eval_steps=lm_eval_steps,
+            tasks=lm_eval_tasks if isinstance(lm_eval_tasks, list) else lm_eval_tasks.split(','),
+            limit=lm_eval_limit,
+            output_dir=output_dir,
+            log_to_wandb=use_wandb,
+        )
+        callbacks.append(lm_eval_callback)
+        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+            print(f"\n📊 LM-Eval monitoring enabled:")
+            print(f"   Tasks: {lm_eval_tasks}")
+            print(f"   Eval every {lm_eval_steps} steps")
+            print(f"   {lm_eval_limit} samples per task\n")
+    
     trainer = transformers.Trainer(
         model=model,
         train_dataset=train_data,
@@ -426,10 +458,10 @@ def train(
             optim="adamw_torch",
             eval_strategy="steps" if val_set_size > 0 else "no",
             save_strategy="steps",
-            eval_steps=200 if val_set_size > 0 else None,
-            save_steps=200,
+            eval_steps=100 if val_set_size > 0 else None,
+            save_steps=100,  # Aligned with lm_eval_steps for checkpoint availability
             output_dir=output_dir,
-            save_total_limit=3,
+            save_total_limit=5,  # Keep more checkpoints for evaluation history
             load_best_model_at_end=True if val_set_size > 0 else False,
             ddp_find_unused_parameters=False if ddp else None,
             group_by_length=group_by_length,
@@ -442,7 +474,7 @@ def train(
         data_collator=transformers.DataCollatorForSeq2Seq(
             tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True
         ),
-        callbacks=[AzureMLCallback()],  # Add Azure ML callback
+        callbacks=callbacks,
     )
     model.config.use_cache = False
 
