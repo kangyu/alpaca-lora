@@ -285,11 +285,29 @@ class LMEvalCallback(TrainerCallback):
             print(f"   Few-shot: {self.num_fewshot}")
             print(f"   Command: {' '.join(cmd)}")
             
+            # 清理分布式环境变量，避免干扰 lm-eval
+            # FSDP 设置的这些变量会让 lm-eval 误以为在分布式模式下运行
+            clean_env = os.environ.copy()
+            dist_vars_to_remove = [
+                'WORLD_SIZE', 'RANK', 'LOCAL_RANK', 'LOCAL_WORLD_SIZE',
+                'MASTER_ADDR', 'MASTER_PORT',
+                'GROUP_RANK', 'GROUP_WORLD_SIZE',
+                'TORCHELASTIC_RUN_ID', 'TORCHELASTIC_RESTART_COUNT',
+            ]
+            for var in dist_vars_to_remove:
+                clean_env.pop(var, None)
+            
+            # 设置 CUDA_VISIBLE_DEVICES 只使用第一个 GPU
+            clean_env['CUDA_VISIBLE_DEVICES'] = '0'
+            
+            print(f"   🧹 Cleaned distributed env vars for single-GPU evaluation")
+            
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=1800,  # 30 分钟超时
+                env=clean_env,
             )
             
             if result.returncode != 0:
