@@ -12,6 +12,7 @@ Features:
 """
 
 import os
+import sys
 import json
 import subprocess
 import tempfile
@@ -267,7 +268,7 @@ class LMEvalCallback(TrainerCallback):
             # 在回调中启动另一个 multi-GPU 进程会导致冲突
             # 单 GPU + device_map=auto 已经足够快（100 samples）
             cmd = [
-                "lm_eval",
+                sys.executable, "-m", "lm_eval",  # 使用 python -m lm_eval 避免权限问题
                 "--model", "hf",
                 "--model_args", model_args,
                 "--tasks", ",".join(self.tasks),
