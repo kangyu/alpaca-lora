@@ -121,9 +121,10 @@ def train(
     resume_from_checkpoint: str = None,  # either training checkpoint or final adapter
     prompt_template_name: str = "alpaca",  # The prompt template to use, will default to alpaca.
     auto_resume: bool = True,  # automatically resume from the latest checkpoint if available
+    save_steps: int = 100,  # save checkpoint every N steps
     # LM-Eval monitoring
     lm_eval_enabled: bool = True,  # enable lm-eval during training
-    lm_eval_steps: int = 100,  # run lm-eval every N steps (must be multiple of save_steps)
+    lm_eval_steps: int = 100,  # run lm-eval every N steps (should match save_steps)
     lm_eval_tasks: List[str] = ["mmlu_stem", "gsm8k"],  # tasks to evaluate
     lm_eval_limit: int = 100,  # samples per task (for speed)
 ):
@@ -458,8 +459,8 @@ def train(
             optim="adamw_torch",
             eval_strategy="steps" if val_set_size > 0 else "no",
             save_strategy="steps",
-            eval_steps=100 if val_set_size > 0 else None,
-            save_steps=100,  # Aligned with lm_eval_steps for checkpoint availability
+            eval_steps=save_steps if val_set_size > 0 else None,
+            save_steps=save_steps,
             output_dir=output_dir,
             save_total_limit=5,  # Keep more checkpoints for evaluation history
             load_best_model_at_end=True if val_set_size > 0 else False,
