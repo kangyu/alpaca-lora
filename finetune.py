@@ -499,6 +499,19 @@ def train(
 
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
         print(f"\n🚀 Starting training from {'checkpoint' if resume_from_checkpoint else 'scratch'}...")
+        
+        # Save WandB run ID for eval worker to attach to same run
+        if use_wandb:
+            try:
+                import wandb
+                if wandb.run is not None:
+                    wandb_id_file = os.path.join(output_dir, "wandb_run_id.txt")
+                    os.makedirs(output_dir, exist_ok=True)
+                    with open(wandb_id_file, "w") as f:
+                        f.write(wandb.run.id)
+                    print(f"   📊 WandB run ID saved: {wandb.run.id}")
+            except Exception as e:
+                print(f"   ⚠️ Failed to save WandB run ID: {e}")
     
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
 
