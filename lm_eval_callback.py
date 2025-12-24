@@ -262,41 +262,27 @@ class LMEvalCallback(TrainerCallback):
             eval_result_dir = os.path.join(eval_output_dir, f"_eval_results_step_{state.global_step}")
             os.makedirs(eval_result_dir, exist_ok=True)
             
-            # 检测可用 GPU 数量
-            num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
-            
-            # 使用 accelerate 启动多GPU数据并行评估
-            if num_gpus > 1:
-                cmd = [
-                    "accelerate", "launch",
-                    "--multi_gpu",
-                    "--num_processes", str(num_gpus),
-                    "-m", "lm_eval",
-                    "--model", "hf",
-                    "--model_args", model_args,
-                    "--tasks", ",".join(self.tasks),
-                    "--num_fewshot", str(self.num_fewshot),
-                    "--batch_size", str(self.batch_size),
-                    "--limit", str(self.limit),
-                    "--output_path", eval_result_dir,
-                ]
-                print(f"   🚀 Multi-GPU evaluation with {num_gpus} GPUs")
-            else:
-                cmd = [
-                    "lm_eval",
-                    "--model", "hf",
-                    "--model_args", model_args,
-                    "--tasks", ",".join(self.tasks),
-                    "--num_fewshot", str(self.num_fewshot),
-                    "--batch_size", str(self.batch_size),
-                    "--limit", str(self.limit),
-                    "--output_path", eval_result_dir,
-                ]
+            # 使用单 GPU 评估，避免与 FSDP 训练进程冲突
+            # FSDP 训练已经占用了所有 GPU 的分布式环境
+            # 在回调中启动另一个 multi-GPU 进程会导致冲突
+            # 单 GPU + device_map=auto 已经足够快（100 samples）
+            cmd = [
+                "lm_eval",
+                "--model", "hf",
+                "--model_args", model_args,
+                "--tasks", ",".join(self.tasks),
+                "--num_fewshot", str(self.num_fewshot),
+                "--batch_size", str(self.batch_size),
+                "--limit", str(self.limit),
+                "--output_path", eval_result_dir,
+            ]
+            print(f"   🔄 Single-process evaluation (avoiding FSDP conflict)")
             
             print(f"   Checkpoint: {os.path.basename(checkpoint_dir)}")
             print(f"   Tasks: {', '.join(self.tasks)}")
             print(f"   Limit: {self.limit} samples per task (fixed, first N samples)")
             print(f"   Few-shot: {self.num_fewshot}")
+            print(f"   Command: {' '.join(cmd)}")
             
             result = subprocess.run(
                 cmd,
@@ -306,7 +292,11 @@ class LMEvalCallback(TrainerCallback):
             )
             
             if result.returncode != 0:
-                print(f"⚠️ lm_eval failed: {result.stderr[:500]}")
+                print(f"⚠️ lm_eval failed with return code {result.returncode}")
+                print(f"   STDOUT (last 2000 chars):")
+                print(result.stdout[-2000:] if result.stdout else "(empty)")
+                print(f"   STDERR (last 2000 chars):")
+                print(result.stderr[-2000:] if result.stderr else "(empty)")
                 return results
             
             results = self._parse_results(eval_result_dir)
